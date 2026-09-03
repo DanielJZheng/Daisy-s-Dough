@@ -1,0 +1,10 @@
+.env
+oauth_client.json
+token.json
+credentials.json
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+.mypy_cache/
