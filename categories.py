@@ -6,9 +6,11 @@ from datetime import date
 
 import gspread
 
+from sheets_retry import with_sheets_retry
 
 CATEGORIES_SHEET = "Categories"
 CATEGORY_HEADERS = ["Category", "Type", "FirstSeen", "Aliases"]
+CATEGORY_DATA_RANGE = "A:D"
 
 
 @dataclass(frozen=True)
@@ -23,6 +25,7 @@ class CategoryRegistry:
         self._spreadsheet = spreadsheet
         self._fuzzy_cutoff = fuzzy_cutoff
         self._worksheet = self._ensure_sheet()
+        self._cached_rows: list[list[str]] | None = None
 
     def _ensure_sheet(self) -> gspread.Worksheet:
         try:
@@ -31,18 +34,32 @@ class CategoryRegistry:
             worksheet = self._spreadsheet.add_worksheet(
                 title=CATEGORIES_SHEET, rows=200, cols=10
             )
-            worksheet.update("A1:D1", [CATEGORY_HEADERS])
+            with_sheets_retry(
+                lambda: worksheet.update("A1:D1", [CATEGORY_HEADERS])
+            )
         else:
-            headers = worksheet.row_values(1)
+            headers = with_sheets_retry(lambda: worksheet.row_values(1))
             if headers != CATEGORY_HEADERS:
-                worksheet.update("A1:D1", [CATEGORY_HEADERS])
+                with_sheets_retry(
+                    lambda: worksheet.update("A1:D1", [CATEGORY_HEADERS])
+                )
         return worksheet
 
+    def _invalidate_cache(self) -> None:
+        self._cached_rows = None
+
     def _rows(self) -> list[list[str]]:
-        values = self._worksheet.get_all_values()
+        if self._cached_rows is not None:
+            return self._cached_rows
+
+        values = with_sheets_retry(
+            lambda: self._worksheet.get_all_values(CATEGORY_DATA_RANGE)
+        )
         if len(values) <= 1:
-            return []
-        return values[1:]
+            self._cached_rows = []
+        else:
+            self._cached_rows = values[1:]
+        return self._cached_rows
 
     def load_categories(self, entry_type: str) -> list[str]:
         categories: list[str] = []
@@ -80,7 +97,7 @@ class CategoryRegistry:
         if direct:
             return CategoryMatch(kind="exact", canonical=direct)
 
-        known = self.load_categories(entry_type)
+        known = list({name for name in alias_map.values()})
         if not known:
             return CategoryMatch(kind="none")
 
@@ -106,7 +123,12 @@ class CategoryRegistry:
             return existing[canonical.lower()]
 
         seen = (first_seen or date.today()).isoformat()
-        self._worksheet.append_row([canonical, entry_type, seen, aliases])
+        with_sheets_retry(
+            lambda: self._worksheet.append_row(
+                [canonical, entry_type, seen, aliases]
+            )
+        )
+        self._invalidate_cache()
         return canonical
 
     def add_alias(self, canonical: str, alias: str, entry_type: str) -> None:
@@ -124,5 +146,10 @@ class CategoryRegistry:
                 parts = [part.strip() for part in aliases.split(",") if part.strip()]
                 if alias not in parts:
                     parts.append(alias)
-                self._worksheet.update_cell(index, 4, ", ".join(parts))
+                    with_sheets_retry(
+                        lambda: self._worksheet.update_cell(
+                            index, 4, ", ".join(parts)
+                        )
+                    )
+                    self._invalidate_cache()
                 return

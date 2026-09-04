@@ -2,12 +2,28 @@ import re
 from dataclasses import dataclass
 
 EXPENSE_PATTERN = re.compile(
-    r"^(\d+(?:\.\d{1,2})?)\s+([A-Za-z][A-Za-z0-9_-]*)(?:\s+(.+))?$"
+    r"^\$?(\d+(?:\.\d{1,2})?)\s+([A-Za-z][A-Za-z0-9_-]*)(?:\s+(.+))?$"
 )
 INCOME_PATTERN = re.compile(
-    r"^income\s+(\d+(?:\.\d{1,2})?)\s+([A-Za-z][A-Za-z0-9_-]*)(?:\s+(.+))?$",
+    r"^income\s+\$?(\d+(?:\.\d{1,2})?)\s+([A-Za-z][A-Za-z0-9_-]*)(?:\s+(.+))?$",
     re.IGNORECASE,
 )
+
+FORMAT_HELP = (
+    "Format:\n"
+    "• `25.50 groceries` or `25.50 groceries note here`\n"
+    "• `income 2500 salary` or `income 500 week1`\n"
+    "• `700 rent` (rent goes in Fixed column)\n"
+    "Category = one word. Notes after category optional."
+)
+
+
+def looks_like_entry(content: str) -> bool:
+    text = content.strip()
+    if not text:
+        return False
+    lower = text.lower()
+    return lower.startswith("income ") or text[0].isdigit() or text.startswith("$")
 
 
 @dataclass(frozen=True)

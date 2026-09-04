@@ -6,6 +6,9 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+PROJECT_ROOT = Path(__file__).resolve().parent
+CONFIG_DIR = Path.home() / ".config" / "daisys-dough"
+
 
 @dataclass(frozen=True)
 class Settings:
@@ -26,15 +29,61 @@ def _require(name: str) -> str:
     return value
 
 
+def default_oauth_client_path() -> Path:
+    return CONFIG_DIR / "oauth_client.json"
+
+
+def default_token_path() -> Path:
+    return CONFIG_DIR / "token.json"
+
+
+def resolve_oauth_client_path(configured: Path) -> Path:
+    candidates: list[Path] = []
+    if configured.is_absolute():
+        candidates.append(configured)
+    else:
+        candidates.append(PROJECT_ROOT / configured)
+
+    candidates.append(default_oauth_client_path())
+    candidates.extend(sorted(CONFIG_DIR.glob("client_secret*.json")))
+    candidates.append(PROJECT_ROOT / "oauth_client.json")
+    candidates.extend(sorted(PROJECT_ROOT.glob("client_secret*.json")))
+
+    seen: set[Path] = set()
+    for path in candidates:
+        resolved = path.resolve()
+        if resolved in seen:
+            continue
+        seen.add(resolved)
+        if resolved.is_file():
+            return resolved
+
+    raise FileNotFoundError(
+        "OAuth client JSON not found. Run setup-credentials.ps1 or copy Desktop OAuth JSON to "
+        f"{default_oauth_client_path()}"
+    )
+
+
+def resolve_token_path(configured: Path) -> Path:
+    if configured.is_absolute():
+        return configured
+    if configured.name == "token.json" and configured.parent == Path("."):
+        return default_token_path()
+    return PROJECT_ROOT / configured
+
+
 def load_settings() -> Settings:
+    oauth_path = resolve_oauth_client_path(
+        Path(os.getenv("GOOGLE_OAUTH_CLIENT_PATH", str(default_oauth_client_path())))
+    )
     return Settings(
         discord_token=_require("DISCORD_TOKEN"),
         discord_channel_id=int(_require("DISCORD_CHANNEL_ID")),
         google_sheet_id=_require("GOOGLE_SHEET_ID"),
-        google_oauth_client_path=Path(
-            os.getenv("GOOGLE_OAUTH_CLIENT_PATH", "oauth_client.json")
+        google_oauth_client_path=oauth_path,
+        google_token_path=resolve_token_path(
+            Path(os.getenv("GOOGLE_TOKEN_PATH", str(default_token_path())))
         ),
-        google_token_path=Path(os.getenv("GOOGLE_TOKEN_PATH", "token.json")),
         timezone=os.getenv("TIMEZONE", "America/Los_Angeles"),
         react_on_error=os.getenv("REACT_ON_ERROR", "true").lower() == "true",
         fuzzy_match_cutoff=float(os.getenv("FUZZY_MATCH_CUTOFF", "0.75")),
