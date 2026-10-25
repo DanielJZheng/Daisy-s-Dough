@@ -17,9 +17,11 @@ class Settings:
     google_sheet_id: str
     google_oauth_client_path: Path
     google_token_path: Path
+    google_service_account_path: Path | None
     timezone: str
     react_on_error: bool
     fuzzy_match_cutoff: float
+    sheets_min_interval_sec: float
 
 
 def _require(name: str) -> str:
@@ -72,6 +74,19 @@ def resolve_token_path(configured: Path) -> Path:
     return PROJECT_ROOT / configured
 
 
+def resolve_service_account_path() -> Path | None:
+    raw = os.getenv("GOOGLE_SERVICE_ACCOUNT_PATH", "").strip()
+    if not raw:
+        default = CONFIG_DIR / "service_account.json"
+        if default.is_file():
+            return default
+        return None
+    path = Path(raw)
+    if path.is_absolute():
+        return path
+    return (PROJECT_ROOT / path).resolve()
+
+
 def load_settings() -> Settings:
     oauth_path = resolve_oauth_client_path(
         Path(os.getenv("GOOGLE_OAUTH_CLIENT_PATH", str(default_oauth_client_path())))
@@ -84,7 +99,9 @@ def load_settings() -> Settings:
         google_token_path=resolve_token_path(
             Path(os.getenv("GOOGLE_TOKEN_PATH", str(default_token_path())))
         ),
+        google_service_account_path=resolve_service_account_path(),
         timezone=os.getenv("TIMEZONE", "America/Los_Angeles"),
         react_on_error=os.getenv("REACT_ON_ERROR", "true").lower() == "true",
         fuzzy_match_cutoff=float(os.getenv("FUZZY_MATCH_CUTOFF", "0.75")),
+        sheets_min_interval_sec=float(os.getenv("SHEETS_MIN_INTERVAL_SEC", "3.0")),
     )
