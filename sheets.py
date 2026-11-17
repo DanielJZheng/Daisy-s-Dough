@@ -347,12 +347,14 @@ class SheetManager:
         timezone: str,
         *,
         service_account_path: str | None = None,
+        service_account_info: dict | None = None,
     ) -> None:
         sa_path = Path(service_account_path) if service_account_path else None
         client = authorize_google(
             Path(oauth_client_path),
             Path(token_path),
             service_account_path=sa_path,
+            service_account_info=service_account_info,
         )
         self._spreadsheet = client.open_by_key(sheet_id)
         self._tz = ZoneInfo(timezone)
@@ -377,6 +379,7 @@ class SheetManager:
                 if settings.google_service_account_path
                 else None
             ),
+            service_account_info=settings.google_service_account_info,
         )
 
     def backfill_manual_timestamps(

@@ -1,3 +1,4 @@
+import json
 import os
 from dataclasses import dataclass
 from pathlib import Path
@@ -18,6 +19,7 @@ class Settings:
     google_oauth_client_path: Path
     google_token_path: Path
     google_service_account_path: Path | None
+    google_service_account_info: dict | None
     timezone: str
     react_on_error: bool
     fuzzy_match_cutoff: float
@@ -74,6 +76,19 @@ def resolve_token_path(configured: Path) -> Path:
     return PROJECT_ROOT / configured
 
 
+def load_service_account_info() -> dict | None:
+    raw = os.getenv("GOOGLE_SERVICE_ACCOUNT_JSON", "").strip()
+    if not raw:
+        return None
+    try:
+        info = json.loads(raw)
+    except json.JSONDecodeError as error:
+        raise ValueError("GOOGLE_SERVICE_ACCOUNT_JSON is not valid JSON") from error
+    if not isinstance(info, dict) or not info.get("client_email"):
+        raise ValueError("GOOGLE_SERVICE_ACCOUNT_JSON must be a service account object")
+    return info
+
+
 def resolve_service_account_path() -> Path | None:
     raw = os.getenv("GOOGLE_SERVICE_ACCOUNT_PATH", "").strip()
     if not raw:
@@ -88,18 +103,26 @@ def resolve_service_account_path() -> Path | None:
 
 
 def load_settings() -> Settings:
-    oauth_path = resolve_oauth_client_path(
-        Path(os.getenv("GOOGLE_OAUTH_CLIENT_PATH", str(default_oauth_client_path())))
-    )
+    sa_info = load_service_account_info()
+    sa_path = resolve_service_account_path()
+    if sa_info is None and sa_path is None:
+        oauth_path = resolve_oauth_client_path(
+            Path(os.getenv("GOOGLE_OAUTH_CLIENT_PATH", str(default_oauth_client_path())))
+        )
+        token_path = resolve_token_path(
+            Path(os.getenv("GOOGLE_TOKEN_PATH", str(default_token_path())))
+        )
+    else:
+        oauth_path = default_oauth_client_path()
+        token_path = default_token_path()
     return Settings(
         discord_token=_require("DISCORD_TOKEN"),
         discord_channel_id=int(_require("DISCORD_CHANNEL_ID")),
         google_sheet_id=_require("GOOGLE_SHEET_ID"),
         google_oauth_client_path=oauth_path,
-        google_token_path=resolve_token_path(
-            Path(os.getenv("GOOGLE_TOKEN_PATH", str(default_token_path())))
-        ),
-        google_service_account_path=resolve_service_account_path(),
+        google_token_path=token_path,
+        google_service_account_path=sa_path,
+        google_service_account_info=sa_info,
         timezone=os.getenv("TIMEZONE", "America/Los_Angeles"),
         react_on_error=os.getenv("REACT_ON_ERROR", "true").lower() == "true",
         fuzzy_match_cutoff=float(os.getenv("FUZZY_MATCH_CUTOFF", "0.75")),

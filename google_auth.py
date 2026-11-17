@@ -15,7 +15,13 @@ def authorize_google(
     token_path: Path,
     *,
     service_account_path: Path | None = None,
+    service_account_info: dict | None = None,
 ) -> gspread.Client:
+    if service_account_info is not None:
+        return gspread.service_account_from_dict(
+            service_account_info,
+            scopes=SCOPES,
+        )
     if service_account_path is not None:
         if not service_account_path.is_file():
             raise FileNotFoundError(

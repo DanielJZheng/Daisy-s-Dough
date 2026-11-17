@@ -1,0 +1,11 @@
+.env
+.venv
+.git
+__pycache__
+*.pyc
+token.json
+oauth_client.json
+service_account.json
+client_secret*.json
+credentials.json
+*.md
